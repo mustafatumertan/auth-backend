@@ -1,14 +1,12 @@
 const mongoose = require("mongoose");
 
-console.log(rocess.env.DB);
+
 // Make connection to MongoDB
 const connectToMongoDB = async () => {
     try {
       mongoose.connect(process.env.DB, {
         useNewUrlParser: true,
-        useUnifiedTopology: true,
-        useCreateIndex: true,
-        useFindAndModify: false,
+        useUnifiedTopology: true
       });
   
       console.log("Connected to MongoDB...");

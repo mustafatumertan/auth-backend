@@ -12,6 +12,9 @@ dotenv.config();
 // Connect to MongoDB
 connectToMongoDB();
 
+// Routes
+app.use("/api/auth", require("./routes/api/auth"));
+
 // Run the server
 const port = process.env.PORT;
 app.listen(port, () => console.log(`Server running in ${port}`));
