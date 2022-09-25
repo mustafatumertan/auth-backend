@@ -5,6 +5,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../../models/user");
 const Verification = require("../../models/verification");
+const config = require("config");
+const user = require("../../models/user");
 
 /**
  * @desc    REgister a new user
@@ -122,7 +124,140 @@ exports.verify = async (req, res) => {
         console.log(err);
         res.status(500).json(error("Server Error", res.statusCode));
     }
-
-
-
 };
+
+/**
+ * @desc    Login a user
+ * @method  POST api/auth/login
+ * @access  public
+ */
+exports.login = async(req, res) => {
+
+    // Validation
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+        return res.status(422).json(validation(errors.array()));
+    
+    const {email, password} = req.body;
+
+    try {
+        
+        const user = await User.findOne({email});
+        
+        // Check the email. if it does not exist, throw the error
+        if (!user) return res.status(422).json(validation("Invalid Credentials"));
+
+        // Check the password
+        let checkPassword = await bcrypt.compare(password, user.password);
+        if (!checkPassword)
+            res.status(422).json(validation("Invalid credentials"));
+
+        // Check user if not activated yet
+        // If not activated, send error response
+        if (user && !user.verified)
+            return res.status(400)
+                .json(error("Your account is not active yet", res.statusCode));
+        
+        // If the above conditions pass,
+        // Send a response with JWT Token in it
+        const payload = {
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email
+            }
+        };
+
+        jwt.sign(
+            payload,
+            config.get("jwtSecret"),
+            {expiresIn: 3600},
+            (err, token) => {
+                if (err) throw err;
+            res.status(200).json(success("Login success", {token}, res.statusCode));
+            }
+        );
+    } catch(err) {
+        console.log(err.message);
+        res.status(500).json(error("Server Error", res.statusCode));
+    }
+};
+
+/**
+ * @desc    Resend new verification token
+ * @method  POST api/auth/verify/resend
+ * @access  public
+ */
+exports.resendVerification = async (req, res) => {
+    const {email} = req.body;
+
+    // Simple check for email
+    if (!email)
+        return res.status(422).json(validation([{msg: "Email is required"}]));
+
+    try {
+        const user = await User.findOne({email: email.toLowerCase()});
+
+        // Check the user first
+        if(!user)
+            return res.status(404).json(error("Email not found", res.statusCode));
+        
+        // If user exists, get verification by user id
+        let verification = await Verification.findOne({
+            userId: user._id,
+            type: "Register New Account"
+        });
+
+        // If there is verification data,
+        // Remove previous verification data and create a new one
+        if (verification) {
+            verification = await Verification.findByIdAndRemove(verification._id);
+        }
+
+        // Create a new verification data
+        let newVerification = new Verification({
+            token: randomString(50),
+            userId: user._id,
+            type: "Register New Account"
+        });
+
+        // Save the verification data
+        await newVerification.save();
+
+        // Send the response
+        res.status(201).json(success(
+            "Verification has been set",
+            {verification: newVerification},
+            res.statusCode
+        ));
+    } catch (err) {
+        console.log(err.message);
+        res.status(500).json(error("Server error", res.statusCode));
+    }
+};
+
+/**
+ * @desc    Get authenticated user
+ * @method  GET api/auth
+ * @access  private
+ */
+exports.getAuthenticatedUser = async (req, res) => {
+
+    try {
+        const user = await User.findById(req.user.id).select("-password");
+        console.log(user);
+        
+        // Check the user just in case
+        if (!user)
+            return res.status(404).json(error("User not found", res.statusCode));
+        
+        // Send the response
+        res.status(200).json(success(`Hello ${user.name}`, {user}, res.statusCode));
+        
+    } catch (err) {
+        console.log(err.message);
+        res.status(500).json(error("Server Error", res.statusCode));
+    }
+
+
+}
